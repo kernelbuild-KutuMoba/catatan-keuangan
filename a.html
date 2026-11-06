@@ -609,6 +609,19 @@ window.hapusTransaksi = function(id) {
 // JALANKAN PERTAMA KALI
 renderTabel();
 
+
+    // Memeriksa dan memperbarui tanggal otomatis jika tab browser dibuka kembali di hari yang berbeda
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        const todayStr = new Date().toISOString().split('T')[0];
+        // Jika nilai input saat ini berbeda dengan tanggal sistem hari ini, perbarui
+        if (inputTanggal.value !== todayStr) {
+            inputTanggal.valueAsDate = new Date();
+        }
+    }
+});
+
+
 </script>
 
 </body>
