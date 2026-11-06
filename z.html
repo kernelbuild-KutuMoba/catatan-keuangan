@@ -396,7 +396,7 @@ tr:hover {
     </form>
 </div>
 
-<!-- KOTAK RINGKASAN TERKUMPUL (TANGGAL 4) -->
+<!-- KOTAK RINGKASAN TERKUMPUL KHUSUS -->
 <div class="summary-card" id="summary-box">
     <div class="summary-title" id="summary-title-text">
         Total Terkumpul Setiap Bulan
@@ -474,11 +474,13 @@ function simpanData() {
 }
 
 function formatRupiah(angka) {
-    if (angka === 0) return '-';
-    return 'Rp' + Number(angka).toLocaleString('id-ID');
+    const num = Number(angka) || 0;
+    if (num === 0) return '-';
+    return 'Rp' + num.toLocaleString('id-ID');
 }
 
 function formatTanggal(tanggal) {
+    if (!tanggal) return '';
     const [tahun, bulan, hari] = tanggal.split('-');
     return `${hari}/${bulan}/${tahun}`;
 }
@@ -493,6 +495,13 @@ function escapeHTML(value) {
     })[char]);
 }
 
+// Fungsi konversi string YYYY-MM-DD ke format angka YYYYMMDD
+function parseDateNum(dateStr) {
+    if (!dateStr) return 0;
+    const clean = dateStr.split('T')[0];
+    return Number(clean.replace(/-/g, ''));
+}
+
 function renderTabel() {
     const tbody = document.getElementById('transaction-table');
     const mobile = document.getElementById('mobile-list');
@@ -502,27 +511,53 @@ function renderTabel() {
     tbody.innerHTML = '';
     mobile.innerHTML = '';
 
-    // Tentukan bulan/tahun aktif secara real-time dari filter atau input tanggal form
-    let targetBulanTahun = '';
-    if (filterTanggal.value) {
-        targetBulanTahun = filterTanggal.value.substring(0, 7);
-    } else if (inputTanggal.value) {
-        targetBulanTahun = inputTanggal.value.substring(0, 7);
-    } else {
+    // Ambil tanggal referensi dari filter ATAU input form ATAU tanggal hari ini
+    let refDateStr = filterTanggal.value || inputTanggal.value;
+    if (!refDateStr) {
         const today = new Date();
         const thn = today.getFullYear();
         const bln = String(today.getMonth() + 1).padStart(2, '0');
-        targetBulanTahun = `${thn}-${bln}`;
+        const hri = String(today.getDate()).padStart(2, '0');
+        refDateStr = `${thn}-${bln}-${hri}`;
     }
 
-    // Format tanggal 4 real-time (DD/MM/YYYY)
-    const [thnTarget, blnTarget] = targetBulanTahun.split('-');
-    const tanggal4Spesifik = `04/${blnTarget}/${thnTarget}`;
+    const [y, m, d] = refDateStr.split('-').map(Number);
 
-    // Update teks pada kotak ringkasan secara real-time
+    // Hitung Siklus Tanggal 4 (Rentang dari tanggal 5 bulan lalu s.d. tanggal 3 bulan pencairan)
+    let targetYear = y;
+    let targetMonth = m; // 1-12
+
+    // Jika tanggal referensi adalah tanggal 1, 2, atau 3, maka tanggal pencairan terdekat adalah tanggal 4 bulan ini
+    // Jika tanggal referensi adalah tanggal 4 atau seterusnya, maka tanggal pencairan berikutnya adalah tanggal 4 bulan depan
+    if (d >= 4) {
+        targetMonth = m + 1;
+        if (targetMonth > 12) {
+            targetMonth = 1;
+            targetYear++;
+        }
+    }
+
+    // Tentukan Tanggal Pencairan (Tanggal 4)
+    const strTargetMonth = String(targetMonth).padStart(2, '0');
+    const tanggal4Spesifik = `04/${strTargetMonth}/${targetYear}`;
+
+    // Hitung tanggal awal rentang (Tanggal 5 bulan sebelumnya dari tanggal pencairan)
+    let startMonth = targetMonth - 1;
+    let startYear = targetYear;
+    if (startMonth < 1) {
+        startMonth = 12;
+        startYear--;
+    }
+    const strStartMonth = String(startMonth).padStart(2, '0');
+
+    // Angka pembanding (YYYYMMDD)
+    const startNum = Number(`${startYear}${strStartMonth}05`);
+    const endNum = Number(`${targetYear}${strTargetMonth}03`);
+
+    // Tampilkan label informasi pada kotak ringkasan
     summaryTitleText.innerHTML = `
-        Total Terkumpul Setiap Bulan
-        <small>Akumulasi seluruh transaksi uang masuk pada tanggal ${tanggal4Spesifik}</small>
+        Total Terkumpul Periode Ini
+        <small>Akumulasi uang masuk (05/${strStartMonth}/${startYear} s.d. 03/${strTargetMonth}/${targetYear}) untuk ditampilkan pada ${tanggal4Spesifik}</small>
     `;
 
     // Sort data berdasarkan tanggal dan ID
@@ -536,19 +571,19 @@ function renderTabel() {
         ? sortedData.filter(item => item.tanggal === selectedDate)
         : sortedData;
 
-    // HITUNG KHUSUS AKUMULASI TRANSAKSI MASUK PADA TANGGAL 4 DI BULAN TERSEBUT
-    let akumulasiMasukTgl4 = 0;
+    // HITUNG AKUMULASI TRANSAKSI MASUK PADA RENTANG TANGGAL 5 S.D 3
+    let akumulasiMasukPeriode = 0;
     databaseTransaksi.forEach(item => {
-        const itemBulanTahun = item.tanggal.substring(0, 7);
-        const itemHari = Number(item.tanggal.split('-')[2]);
-
-        if (itemBulanTahun === targetBulanTahun && itemHari === 4) {
-            akumulasiMasukTgl4 += Number(item.masuk) || 0;
+        if (item.tanggal) {
+            const itemNum = parseDateNum(item.tanggal);
+            if (itemNum >= startNum && itemNum <= endNum) {
+                akumulasiMasukPeriode += Number(item.masuk) || 0;
+            }
         }
     });
 
     // TAMPILKAN HASILNYA DI KOTAK RINGKASAN KHUSUS
-    summaryAmount.textContent = akumulasiMasukTgl4 > 0 ? formatRupiah(akumulasiMasukTgl4) : 'Rp0';
+    summaryAmount.textContent = akumulasiMasukPeriode > 0 ? formatRupiah(akumulasiMasukPeriode) : 'Rp0';
 
     if (dataToRender.length === 0) {
         const pesanKosong = selectedDate 
@@ -561,13 +596,15 @@ function renderTabel() {
     }
 
     dataToRender.forEach((item) => {
+        const itemNum = parseDateNum(item.tanggal);
         const isTanggal4 = Number(item.tanggal.split('-')[2]) === 4;
+        const isInPeriode = itemNum >= startNum && itemNum <= endNum;
         const keterangan = escapeHTML(item.keterangan);
         const tanggal = formatTanggal(item.tanggal);
 
         // TAMPILAN DESKTOP
         const tr = document.createElement('tr');
-        if (isTanggal4) {
+        if (isTanggal4 || isInPeriode) {
             tr.classList.add('highlight-tgl4');
         }
 
@@ -588,7 +625,7 @@ function renderTabel() {
         const card = document.createElement('div');
         card.className = 'card-transaction';
 
-        if (isTanggal4) {
+        if (isTanggal4 || isInPeriode) {
             card.classList.add('highlight-tgl4');
         }
 
@@ -643,10 +680,10 @@ document.getElementById('finance-form').addEventListener('submit', function(e) {
 
     databaseTransaksi.push({
         id: Date.now(),
-        tanggal,
-        keterangan,
-        keluar,
-        masuk
+        tanggal: tanggal,
+        keterangan: keterangan,
+        keluar: keluar,
+        masuk: masuk
     });
 
     simpanData();
